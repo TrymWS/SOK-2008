@@ -1,0 +1,259 @@
+---
+title: "Arbeidskrav 2"
+format: html
+editor: visual
+---
+
+# Utfordring 1, SOK-2008
+
+```{r}
+rm(list=ls()) 
+library(tidyverse)
+```
+
+### **Utfordring 1.1**
+
+```{r}
+#JSON spørring fra SSB
+
+url <- "https://data.ssb.no/api/v0/no/table/04544"
+
+query <- '{
+  "query": [
+    {
+      "code": "Kjonn",
+      "selection": {
+        "filter": "item",
+        "values": [
+          "0",
+          "1",
+          "2"
+        ]
+      }
+    },
+    {
+      "code": "Yrkesstatus",
+      "selection": {
+        "filter": "item",
+        "values": [
+          "00",
+          "01",
+          "02",
+          "03"
+        ]
+      }
+    },
+    {
+      "code": "ContentsCode",
+      "selection": {
+        "filter": "item",
+        "values": [
+          "Sysselsatte",
+          "Inntektsgivende",
+          "Ukeverk",
+          "FaktiskArbeidstid"
+        ]
+      }
+    },
+    {
+      "code": "Tid",
+      "selection": {
+        "filter": "item",
+        "values": [
+          "1996","1997","1998","1999","2000","2001","2002","2003","2004","2005","2006","2007","2008","2009","2010","2011","2012","2013","2014","2015","2016","2017","2018","2019","2020","2021","2022"
+        ]
+      }
+    }
+  ],
+  "response": {
+    "format": "json-stat2"
+  }
+}'
+
+# Kode rappet fra SOK-1004 for å lage df
+
+hent_indeks.tmp <- url %>%
+  POST(body = query, encode = "json")
+
+df <-  hent_indeks.tmp %>%
+  content("text") %>%
+  fromJSONstat() %>%
+  as_tibble()
+
+# Endre navn
+df <- df %>%
+  rename(status = "yrkesstatus", verdi = value, variabel = statistikkvariabel)
+
+df["variabel"][df["variabel"] == "Sysselsatte i alt (1 000 personer)"] <- "Sysselsatte i alt"
+df["variabel"][df["variabel"] == "Sysselsatte på jobb (1 000 personer)"] <- "Sysselsatte på jobb"
+df["variabel"][df["variabel"] == "Utførte ukeverk (à 37,5 timer) (1 000)"] <- "ukeverk"
+df["variabel"][df["variabel"] == "Faktisk arbeidstid (timer per uke)"] <- "Faktisk arbeidstid"
+
+```
+
+```{r}
+df2<-df[!(df$kjønn=="Begge kjønn" | df$variabel=="ukeverk" | df$variabel=="Sysselsatte på jobb" | df$variabel=="Sysselsatte i alt" | df$variabel=="	
+Sysselsatte i alt" | df$status=="Lønnstakere" | df$status=="Selvstendige" | df$status=="Familiearbeidere"),]
+
+df_M<-df2 %>% filter(kjønn == "Menn")
+df_K<-df2 %>% filter(kjønn == "Kvinner")
+```
+
+```{r}
+Figur_1 = ggplot() + 
+  geom_point(data=df_M, aes(x=år, y=verdi), color='blue') +
+  geom_point(data=df_K, aes(x=år, y=verdi), color='pink') +
+  scale_y_continuous(breaks = seq(27.5, 42.5, 2.5), 
+                   limits = c(27.5,42.5), 
+                   expand = c(0,0))+
+  scale_x_discrete(labels=c('1996', '', '', '', '2000', '', '', '', '', '2005', '', '', '', '', '2010', '', '', '', '', '2015', '', '', '', '', '2020', '', ''))+
+  
+  labs(y = "Timer per uke", x = "År", title = "Figur 1: Faktisk arbeidstid", 
+subtitle = "Faktisk arbeidstid per uke, for menn og kvinner. 1996 - 2022", caption = "Kilde: SSB")+
+  
+  annotate("text", x = 10, y = 39.5, label = "Menn", color="blue") +
+  annotate("text", x = 10, y = 32, label = "Kvinner", color="pink") +
+  
+  theme_dark()+
+  theme(plot.background = element_rect(fill = "lightblue"))
+
+Figur_1
+```
+
+Vi ser av figur 1 at Kvinner velger å jobbe mindre enn menn på ukesbasis. Og mellom 1996 og 2022 kan vi se at kvinner jobber litt mer per uke, mens menn jobber en del mindre per uke.
+
+Kvinner er har oftere lenger foreldrepermisjon enn menn, og er oftere hjemme med sykt barn. Mens menn er mer tilbøylige til å jobbe overtid.
+
+```{r}
+
+df3 = read.csv('https://raw.githubusercontent.com/uit-sok-2008-h23/uit-sok-2008-h23.github.io/main/assets/women.csv',sep=';')
+
+df33 = subset(df3, select = -c(fem_emp_rate_6_14) ) %>%
+  rename(Permisjonsuker = tot_full_rate, Sysselsetting = fem_emp_rate_0_2)
+df34 = subset(df3, select = -c(fem_emp_rate_0_2) ) %>%
+  rename(Permisjonsuker = tot_full_rate, Sysselsetting = fem_emp_rate_6_14)
+```
+
+```{r}
+dat33 <- df33 %>%
+  gather(Permisjonsuker, Sysselsetting, -country)
+
+Figur_2 = ggplot(dat33, aes(x = country, y = Sysselsetting, fill = Permisjonsuker)) +
+  geom_col(position = "dodge")+
+  
+  labs(y = "Permisjon og sysselsetting", x = "Land", title = "Figur 2: Permisjon og sysselsetting", 
+subtitle = "Foreldrepermisjon og sysselsetting for kvinner med barn på 0-2 år.", caption = "Kilde: OECD/Foreleser")+
+  
+  
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  theme(plot.background = element_rect(fill = "lightblue"))
+
+Figur_2
+```
+
+```{r}
+dat34 <- df34 %>%
+  gather(Permisjonsuker, Sysselsetting, -country)
+
+Figur_3 = ggplot(dat34, aes(x = country, y = Sysselsetting, fill = Permisjonsuker)) +
+  geom_col(position = "dodge")+
+  
+  labs(y = "Permisjon og sysselsetting", x = "Land", title = "Figur 3: Permisjon og sysselsetting", 
+subtitle = "Foreldrepermisjon og sysselsetting for kvinner med barn på 6-14 år.", caption = "Kilde: OECD/Foreleser")+
+  
+  
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  theme(plot.background = element_rect(fill = "lightblue"))
+
+Figur_3
+```
+
+I Figur 2 og 3 kan vi se at i flere land, som for eksempel Estonia, Slovak Republic og Hungary, at arbeidsdeltakelsen faller mens det er høy foreldrepermisjon og foreldre har barn mellom 0 - 2 år, mens når barna er 6 - 14 år vil arbeidsdeltakelsen være høy igjen. For de nevnte landene vil arbeidsdeltakelsen når barna er 6 - 14 år være høyere enn i USA, som ikke har foreldrepermisjon.
+
+### **Utfordring 1.2**
+
+```{r}
+df_health = read.csv('https://raw.githubusercontent.com/TrymWS/SOK-2008/main/hlth_sha11_hf__custom_7545134_linear_2_0.csv',sep=',')
+
+df4 = subset(df_health, select = -c(STRUCTURE,STRUCTURE_ID,freq,Time.frequency,unit,icha11_hf,geo,Time,Observation.value,OBS_FLAG,Observation.status..Flag.,STRUCTURE_NAME) ) %>%
+  rename(verdi = "OBS_VALUE", år = TIME_PERIOD, land = Geopolitical.entity..reporting., betaler = Classification.of.health.care.financing.schemes...SHA.2011, variabel = Unit.of.measure)
+
+df4["variabel"][df4["variabel"] == "Percentual share of total current health expenditure (CHE)"] <- "Andel av totalkostnad"
+df4["variabel"][df4["variabel"] == "Purchasing power standard (PPS) per inhabitant"] <- "PPS per capita"
+df4["betaler"][df4["betaler"] == "Household out-of-pocket payment"] <- "Egenandel"
+df4["betaler"][df4["betaler"] == "All financing schemes"] <- "Totalkostnad"
+df4["land"][df4["land"] == "European Union - 27 countries (from 2020)"] <- "European Union"
+
+df4_percent <- df4 %>% filter(variabel == "Andel av totalkostnad")
+df4_percent <- df4_percent %>% filter(betaler == "Egenandel")
+df4_euro <- df4 %>% filter(variabel == "PPS per capita")
+df4_euro <- df4_euro %>% filter(betaler == "Totalkostnad")
+
+df4 <- merge(df4_percent,df4_euro,by="land") %>%
+  rename(egenandel_prosent = verdi.x, totkost_helse_eur = verdi.y, år = år.x)
+
+df4 = subset(df4, select = -c(variabel.x, variabel.y, betaler.x, betaler.y, år.y) )
+```
+
+```{r}
+Figur_4 = ggplot() + 
+  geom_point(data=df4, aes(x=egenandel_prosent, y=totkost_helse_eur), color='midnightblue') +
+  
+  labs(y = "Totale helsekostnader", x = "Egenandel", title = "Figur 4: Andel egenandel og helsekostnader", 
+subtitle = "Andel egenandel satt opp mot totale helsekostnader", caption = "Kilde: Eurostat") +
+  scale_y_continuous(breaks = seq(1000, 5000, 500), 
+                   limits = c(750,5250), 
+                   expand = c(0,0))+
+  scale_x_continuous(breaks = seq(10, 40, 5), 
+                   limits = c(7.5,42.5), 
+                   expand = c(0,0))+
+  
+  theme_dark()+
+  theme(plot.background = element_rect(fill = "lightblue"))
+  
+Figur_4
+```
+
+I Figur 4 ser vi sammenhengen mellom egenandel som andel av total helsetjenestekostnad, og den totale helsetjenestekostnaden.
+
+Vi ser at det er stor forskjell på landene, når det kommer til andel egenandel og totalkostnader for helsetjenester.
+
+```{r}
+library(Ecdat)
+
+cor.test(df4$egenandel_prosent, df4$totkost_helse_eur)
+```
+
+Med en korrelasjonstest kan vi se at det er en moderat til sterk negativ korrelasjon mellom fakorene, med en korrelasjonskoeffisient på ca -0.5
+
+```{r}
+# Tatt fra forelesningsnotater
+# Last inn nødvendige pakker
+library(econocharts)
+
+             
+# Add custom curves
+demand1 <- data.frame(Hmisc::bezier(c(1, 3, 9),
+                                    c(9, 3, 1))) 
+
+demand2 <- data.frame(Hmisc::bezier(c(2.5, 4.5, 10.5),
+                                    c(10.5, 4.5, 2.5))) 
+
+supply1 <- data.frame(Hmisc::bezier(c(1, 8, 9),
+                                    c(1, 5, 9)))
+#with bezier
+supply2 <- data.frame(Hmisc::bezier(c(1, 8, 9),
+                                    c(1, 5, 9) -2.55))
+#without bezier, the same answer
+supply2 <- data.frame(x = supply1$x, y = supply1$y - 2.55)
+
+# Supply and demand curves -exteranlities and subsidies
+sdcurve(supply1, demand1, demand2,supply1,supply2,demand1,
+        names = c("MPC", "MPV","MSV", "MPC","MPC-s","MPV"),
+        xlab = "Mengde \n helsetjenester", ylab = "Nytte/ \n kostnad") 
+
+```
+
+Egenandel/subsidiering er brukt for å pushe folk til å konsumere den mengden helsetjenester som er optimalt for samfunnet, helsetjenester over det som er likevekten i ett privat marked vil medføre positive eksternaliteter.
+
+Økte egenandeler kan føre til redusert utnyttelse av helsetjenester, og det kan føre til reduserte positive eksternaliteter. Med subsidiering av helsetjenester har vi en fordelingseffekt som gangner de fattige, mens en økning i egenandel, altså lavere subsidiering, vil redusere fordelingseffekten fra rik til fattig.
